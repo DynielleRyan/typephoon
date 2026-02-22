@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  RotateCcw, Play, Square, Bold, Italic, ChevronDown, List, ListOrdered, Code, Minus,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  RotateCcw, Play, Square, Bold, Italic, ChevronDown, List, ListOrdered, Code, Minus, FilePlus, Trash2, ArrowLeftRight, Pencil,
 } from 'lucide-react';
 
 // --- Markdown parsing ---
@@ -73,6 +76,57 @@ function plainTextFromLines(lines: ParsedLine[]): string {
   return normalizeTypeable(raw);
 }
 
+// --- Persistent notes (localStorage) ---
+
+const NOTE_STORAGE_KEY = 'typephoon-notebook-notes';
+
+interface NoteItem {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: number;
+}
+
+function noteTitleFromContent(content: string): string {
+  const first = content.trim().split('\n')[0]?.trim() || '';
+  return first.slice(0, 40) || 'Untitled';
+}
+
+function loadNotesFromStorage(): NoteItem[] {
+  try {
+    const raw = localStorage.getItem(NOTE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (n: unknown) =>
+        n &&
+        typeof n === 'object' &&
+        typeof (n as NoteItem).id === 'string' &&
+        typeof (n as NoteItem).content === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveNotesToStorage(notes: NoteItem[]) {
+  try {
+    localStorage.setItem(NOTE_STORAGE_KEY, JSON.stringify(notes));
+  } catch {
+    // ignore quota or other errors
+  }
+}
+
+function createNote(content = ''): NoteItem {
+  return {
+    id: crypto.randomUUID(),
+    title: noteTitleFromContent(content) || 'Untitled',
+    content,
+    createdAt: Date.now(),
+  };
+}
+
 // --- Toolbar helper ---
 
 function wrapSelection(
@@ -110,13 +164,50 @@ function prefixLine(
 // --- Component ---
 
 export default function NotesPage() {
-  const [noteText, setNoteText] = useState('');
+  const [notes, setNotes] = useState<NoteItem[]>(() => {
+    const loaded = loadNotesFromStorage();
+    if (loaded.length > 0) return loaded;
+    const first = createNote('');
+    saveNotesToStorage([first]);
+    return [first];
+  });
+  const [currentNoteId, setCurrentNoteId] = useState<string | null>(() => {
+    const loaded = loadNotesFromStorage();
+    return loaded.length > 0 ? loaded[0].id : null;
+  });
+
+  const currentNote = currentNoteId ? notes.find((n) => n.id === currentNoteId) : null;
+  const noteText = currentNote?.content ?? '';
+  const setNoteText = useCallback(
+    (value: string | ((prev: string) => string)) => {
+      const next = typeof value === 'function' ? value(currentNote?.content ?? '') : value;
+      if (!currentNoteId) return;
+      setNotes((prev) => {
+        const out = prev.map((n) =>
+          n.id === currentNoteId
+            ? { ...n, content: next, title: noteTitleFromContent(next) || 'Untitled' }
+            : n
+        );
+        saveNotesToStorage(out);
+        return out;
+      });
+    },
+    [currentNoteId, currentNote?.content]
+  );
+
   const [lines, setLines] = useState<ParsedLine[]>([]);
   const [plainSource, setPlainSource] = useState('');
   const [typedChars, setTypedChars] = useState('');
   const [correctCount, setCorrectCount] = useState(0);
   const [incorrectCount, setIncorrectCount] = useState(0);
   const [hasStarted, setHasStarted] = useState(false);
+  const [notesMenuOpen, setNotesMenuOpen] = useState(false);
+  const [swapped, setSwapped] = useState(() => localStorage.getItem('typephoon-notebook-swapped') === 'true');
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const notesMenuRef = useRef<HTMLDivElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef<HTMLSpanElement>(null);
@@ -132,6 +223,78 @@ export default function NotesPage() {
     if (cursorRef.current)
       cursorRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [charIndex]);
+
+  useEffect(() => {
+    function close(e: MouseEvent) {
+      if (notesMenuRef.current && !notesMenuRef.current.contains(e.target as Node))
+        setNotesMenuOpen(false);
+    }
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  function addNote() {
+    if (isActive) return;
+    const newNote = createNote('');
+    setNotes((prev) => {
+      const next = [...prev, newNote];
+      saveNotesToStorage(next);
+      return next;
+    });
+    setCurrentNoteId(newNote.id);
+    setNotesMenuOpen(false);
+    textareaRef.current?.focus();
+  }
+
+  function openDeleteDialog() {
+    if (isActive || !currentNoteId || notes.length <= 1) return;
+    setDeleteOpen(true);
+  }
+
+  function confirmDeleteNote() {
+    if (!currentNoteId) return;
+    const idx = notes.findIndex((n) => n.id === currentNoteId);
+    const nextNotes = notes.filter((n) => n.id !== currentNoteId);
+    saveNotesToStorage(nextNotes);
+    setNotes(nextNotes);
+    setCurrentNoteId(nextNotes[Math.max(0, idx - 1)].id);
+    setNotesMenuOpen(false);
+    setDeleteOpen(false);
+  }
+
+  function selectNote(id: string) {
+    if (isActive) return;
+    setCurrentNoteId(id);
+    setNotesMenuOpen(false);
+  }
+
+  function openRenameDialog() {
+    if (!currentNoteId || isActive) return;
+    setRenameValue(currentNote?.title ?? 'Untitled');
+    setRenameOpen(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => renameInputRef.current?.select());
+    });
+  }
+
+  function confirmRenameNote() {
+    if (!currentNoteId) return;
+    const title = renameValue.trim() || 'Untitled';
+    setNotes((prev) => {
+      const out = prev.map((n) => n.id === currentNoteId ? { ...n, title } : n);
+      saveNotesToStorage(out);
+      return out;
+    });
+    setRenameOpen(false);
+  }
+
+  function toggleSwap() {
+    setSwapped((prev) => {
+      const next = !prev;
+      localStorage.setItem('typephoon-notebook-swapped', String(next));
+      return next;
+    });
+  }
 
   function toggleStartStop() {
     if (isActive) {
@@ -310,10 +473,86 @@ export default function NotesPage() {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col text-foreground overflow-hidden">
-      <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4 p-4 sm:p-5 md:p-6">
+      <div className={`flex-1 min-h-0 flex flex-col ${swapped ? 'md:flex-row-reverse' : 'md:flex-row'} gap-4 p-4 sm:p-5 md:p-6`}>
 
         {/* Left panel — editor with toolbar */}
         <div className="flex flex-col w-full md:w-1/2 min-h-[200px] rounded-lg border border-border bg-card overflow-hidden">
+          {/* Note switcher — persisted list */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/20 shrink-0">
+            <div className="relative flex-1 min-w-0" ref={notesMenuRef}>
+              <button
+                type="button"
+                onClick={() => !isActive && setNotesMenuOpen((o) => !o)}
+                disabled={isActive}
+                className="flex items-center gap-1.5 w-full min-w-0 rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-foreground bg-muted/50 hover:bg-muted transition-colors disabled:opacity-50 disabled:pointer-events-none truncate"
+              >
+                <span className="truncate">{currentNote?.title ?? 'Untitled'}</span>
+                <ChevronDown className={`size-3.5 shrink-0 transition-transform ${notesMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {notesMenuOpen && !isActive && (
+                <div className="absolute top-full left-0 right-0 mt-1 z-50 max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-lg py-1">
+                  {notes.map((n) => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => selectNote(n.id)}
+                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors truncate ${
+                        n.id === currentNoteId ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
+                      }`}
+                    >
+                      <span className="truncate flex-1">{n.title}</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addNote}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
+                  >
+                    <FilePlus className="size-3.5" /> New note
+                  </button>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={openRenameDialog}
+              disabled={isActive}
+              aria-label="Rename note"
+              title="Rename note"
+              className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <Pencil className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={addNote}
+              disabled={isActive}
+              aria-label="New note"
+              title="New note"
+              className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <FilePlus className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={openDeleteDialog}
+              disabled={isActive || notes.length <= 1}
+              aria-label="Delete note"
+              title="Delete note"
+              className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+            <div className="hidden md:block w-px h-4 bg-border mx-0.5" />
+            <button
+              type="button"
+              onClick={toggleSwap}
+              aria-label="Swap panels"
+              className="hidden md:flex shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            >
+              <ArrowLeftRight className="size-3.5" />
+            </button>
+          </div>
           {/* Toolbar */}
           <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border bg-muted/30 shrink-0 flex-wrap">
             <Button variant="ghost" size="icon-xs" aria-label="Bold" disabled={isActive}
@@ -456,6 +695,56 @@ export default function NotesPage() {
         </p>
         <footer className="mt-1 text-muted-foreground/30 text-[10px]">— Ma'am P.</footer>
       </blockquote>
+
+      {/* Rename dialog */}
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent showCloseButton={false} className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename note</DialogTitle>
+            <DialogDescription>Enter a new title for this note.</DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => { e.preventDefault(); confirmRenameNote(); }}
+          >
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="w-full rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/50"
+              placeholder="Note title"
+            />
+            <DialogFooter className="mt-4">
+              <Button type="button" variant="outline" size="sm" onClick={() => setRenameOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent showCloseButton={false} className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete note</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <span className="font-medium text-foreground">"{currentNote?.title ?? 'Untitled'}"</span>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={confirmDeleteNote}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

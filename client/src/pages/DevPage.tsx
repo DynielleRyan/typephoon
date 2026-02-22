@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { RotateCcw, Play, Square, ChevronDown } from 'lucide-react';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import { RotateCcw, Play, Square, ChevronDown, FilePlus, Trash2, ArrowLeftRight, Pencil } from 'lucide-react';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-typescript';
@@ -91,18 +94,106 @@ function buildSyntaxMap(code: string, langId: string): string[] {
   return map;
 }
 
+// --- Persistent snippets (localStorage) ---
+
+const SNIPPET_STORAGE_KEY = 'typephoon-code-snippets';
+
+interface SnippetItem {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: number;
+}
+
+function snippetTitleFromContent(content: string): string {
+  const first = content.trim().split('\n')[0]?.trim() || '';
+  return first.slice(0, 40) || 'Untitled';
+}
+
+function loadSnippetsFromStorage(): SnippetItem[] {
+  try {
+    const raw = localStorage.getItem(SNIPPET_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (s: unknown) =>
+        s &&
+        typeof s === 'object' &&
+        typeof (s as SnippetItem).id === 'string' &&
+        typeof (s as SnippetItem).content === 'string'
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveSnippetsToStorage(snippets: SnippetItem[]) {
+  try {
+    localStorage.setItem(SNIPPET_STORAGE_KEY, JSON.stringify(snippets));
+  } catch {
+    // ignore
+  }
+}
+
+function createSnippet(content = ''): SnippetItem {
+  return {
+    id: crypto.randomUUID(),
+    title: snippetTitleFromContent(content) || 'Untitled',
+    content,
+    createdAt: Date.now(),
+  };
+}
+
 export default function DevPage() {
-  const [codeText, setCodeText] = useState('');
+  const [snippets, setSnippets] = useState<SnippetItem[]>(() => {
+    const loaded = loadSnippetsFromStorage();
+    if (loaded.length > 0) return loaded;
+    const first = createSnippet('');
+    saveSnippetsToStorage([first]);
+    return [first];
+  });
+  const [currentSnippetId, setCurrentSnippetId] = useState<string | null>(() => {
+    const loaded = loadSnippetsFromStorage();
+    return loaded.length > 0 ? loaded[0].id : null;
+  });
+
+  const currentSnippet = currentSnippetId ? snippets.find((s) => s.id === currentSnippetId) : null;
+  const codeText = currentSnippet?.content ?? '';
+  const setCodeText = useCallback(
+    (value: string | ((prev: string) => string)) => {
+      const next = typeof value === 'function' ? value(currentSnippet?.content ?? '') : value;
+      if (!currentSnippetId) return;
+      setSnippets((prev) => {
+        const out = prev.map((s) =>
+          s.id === currentSnippetId
+            ? { ...s, content: next, title: snippetTitleFromContent(next) || 'Untitled' }
+            : s
+        );
+        saveSnippetsToStorage(out);
+        return out;
+      });
+    },
+    [currentSnippetId, currentSnippet?.content]
+  );
+
   const [sourceText, setSourceText] = useState('');
   const [language, setLanguage] = useState('javascript');
   const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [snippetsMenuOpen, setSnippetsMenuOpen] = useState(false);
+  const [swapped, setSwapped] = useState(() => localStorage.getItem('typephoon-code-swapped') === 'true');
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const [typedChars, setTypedChars] = useState('');
   const [correctCount, setCorrectCount] = useState(0);
   const [incorrectCount, setIncorrectCount] = useState(0);
   const [hasStarted, setHasStarted] = useState(false);
   const typingRef = useRef<HTMLDivElement>(null);
-  const cursorRef = useRef<HTMLSpanElement>(null);
+  const cursorRef = useRef<HTMLDivElement>(null);
   const langMenuRef = useRef<HTMLDivElement>(null);
+  const snippetsMenuRef = useRef<HTMLDivElement>(null);
 
   const isActive = sourceText.length > 0;
   const isDone = isActive && typedChars.length >= sourceText.length;
@@ -128,6 +219,77 @@ export default function DevPage() {
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, []);
+
+  useEffect(() => {
+    function close(e: MouseEvent) {
+      if (snippetsMenuRef.current && !snippetsMenuRef.current.contains(e.target as Node))
+        setSnippetsMenuOpen(false);
+    }
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  function addSnippet() {
+    if (isActive) return;
+    const newSnippet = createSnippet('');
+    setSnippets((prev) => {
+      const next = [...prev, newSnippet];
+      saveSnippetsToStorage(next);
+      return next;
+    });
+    setCurrentSnippetId(newSnippet.id);
+    setSnippetsMenuOpen(false);
+  }
+
+  function openDeleteDialog() {
+    if (isActive || !currentSnippetId || snippets.length <= 1) return;
+    setDeleteOpen(true);
+  }
+
+  function confirmDeleteSnippet() {
+    if (!currentSnippetId) return;
+    const idx = snippets.findIndex((s) => s.id === currentSnippetId);
+    const nextSnippets = snippets.filter((s) => s.id !== currentSnippetId);
+    saveSnippetsToStorage(nextSnippets);
+    setSnippets(nextSnippets);
+    setCurrentSnippetId(nextSnippets[Math.max(0, idx - 1)].id);
+    setSnippetsMenuOpen(false);
+    setDeleteOpen(false);
+  }
+
+  function selectSnippet(id: string) {
+    if (isActive) return;
+    setCurrentSnippetId(id);
+    setSnippetsMenuOpen(false);
+  }
+
+  function openRenameDialog() {
+    if (!currentSnippetId || isActive) return;
+    setRenameValue(currentSnippet?.title ?? 'Untitled');
+    setRenameOpen(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => renameInputRef.current?.select());
+    });
+  }
+
+  function confirmRenameSnippet() {
+    if (!currentSnippetId) return;
+    const title = renameValue.trim() || 'Untitled';
+    setSnippets((prev) => {
+      const out = prev.map((s) => s.id === currentSnippetId ? { ...s, title } : s);
+      saveSnippetsToStorage(out);
+      return out;
+    });
+    setRenameOpen(false);
+  }
+
+  function toggleSwap() {
+    setSwapped((prev) => {
+      const next = !prev;
+      localStorage.setItem('typephoon-code-swapped', String(next));
+      return next;
+    });
+  }
 
   function toggleStartStop() {
     if (isActive) {
@@ -238,10 +400,86 @@ export default function DevPage() {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col text-foreground overflow-hidden">
-      <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4 p-4 sm:p-5 md:p-6">
+      <div className={`flex-1 min-h-0 flex flex-col ${swapped ? 'md:flex-row-reverse' : 'md:flex-row'} gap-4 p-4 sm:p-5 md:p-6`}>
 
         {/* Left panel */}
         <div className="relative flex flex-col w-full md:w-1/2 min-h-0 flex-1 rounded-lg border border-border bg-card overflow-hidden">
+          {/* Snippet switcher — persisted list */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/20 shrink-0">
+            <div className="relative flex-1 min-w-0" ref={snippetsMenuRef}>
+              <button
+                type="button"
+                onClick={() => !isActive && setSnippetsMenuOpen((o) => !o)}
+                disabled={isActive}
+                className="flex items-center gap-1.5 w-full min-w-0 rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-foreground bg-muted/50 hover:bg-muted transition-colors disabled:opacity-50 disabled:pointer-events-none truncate"
+              >
+                <span className="truncate">{currentSnippet?.title ?? 'Untitled'}</span>
+                <ChevronDown className={`size-3.5 shrink-0 transition-transform ${snippetsMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {snippetsMenuOpen && !isActive && (
+                <div className="absolute top-full left-0 right-0 mt-1 z-50 max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-lg py-1">
+                  {snippets.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => selectSnippet(s.id)}
+                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors truncate ${
+                        s.id === currentSnippetId ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
+                      }`}
+                    >
+                      <span className="truncate flex-1">{s.title}</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addSnippet}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
+                  >
+                    <FilePlus className="size-3.5" /> New snippet
+                  </button>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={openRenameDialog}
+              disabled={isActive}
+              aria-label="Rename snippet"
+              title="Rename snippet"
+              className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <Pencil className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={addSnippet}
+              disabled={isActive}
+              aria-label="New snippet"
+              title="New snippet"
+              className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <FilePlus className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={openDeleteDialog}
+              disabled={isActive || snippets.length <= 1}
+              aria-label="Delete snippet"
+              title="Delete snippet"
+              className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+            <div className="hidden md:block w-px h-4 bg-border mx-0.5" />
+            <button
+              type="button"
+              onClick={toggleSwap}
+              aria-label="Swap panels"
+              className="hidden md:flex shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            >
+              <ArrowLeftRight className="size-3.5" />
+            </button>
+          </div>
           {/* Toolbar */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border bg-muted/30 shrink-0">
             {/* Language picker */}
@@ -356,6 +594,56 @@ export default function DevPage() {
         </p>
         <footer className="mt-1 text-muted-foreground/30 text-[10px]">— Ma'am P.</footer>
       </blockquote>
+
+      {/* Rename dialog */}
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent showCloseButton={false} className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename snippet</DialogTitle>
+            <DialogDescription>Enter a new title for this snippet.</DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => { e.preventDefault(); confirmRenameSnippet(); }}
+          >
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="w-full rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/50"
+              placeholder="Snippet title"
+            />
+            <DialogFooter className="mt-4">
+              <Button type="button" variant="outline" size="sm" onClick={() => setRenameOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm">
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent showCloseButton={false} className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete snippet</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <span className="font-medium text-foreground">"{currentSnippet?.title ?? 'Untitled'}"</span>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={confirmDeleteSnippet}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
