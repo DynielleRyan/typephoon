@@ -1,82 +1,113 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, ChevronDown } from 'lucide-react';
 
-const INITIAL_WORDS = [
-  "apple", "beach", "cloud", "dance", "eagle",
-  "flame", "grape", "heart", "image", "jolly",
-  "koala", "lemon", "mango", "night", "ocean",
-  "pearl", "queen", "rain", "storm", "tiger",
-  "umbra", "violet", "whale", "xenon", "yacht",
-  "zebra", "breeze", "crystal", "dream", "ember",
-  "forest", "glacier", "horizon", "island", "jungle",
-  "knight", "legend", "meadow", "nebula", "orchid",
-  "phoenix", "quartz", "river", "sunset", "thunder",
-  "unicorn", "volcano", "willow", "xylophone", "yonder"
-];
+const DURATIONS = [15, 30, 60] as const;
+const WORDS_PER_PAGE = 40;
 
-const WORDS_PER_PAGE = 35;
-const TEST_MODES = ["Punctuation","Language", "Developer", "custom"] as const;
-const DURATION_OPTIONS = [15, 30, 60] as const;
+const LANGUAGES = [
+  { id: 'en', label: 'English' },
+  { id: 'fil', label: 'Filipino' },
+  { id: 'es', label: 'Spanish' },
+  { id: 'fr', label: 'French' },
+  { id: 'de', label: 'German' },
+  { id: 'pt', label: 'Portuguese' },
+  { id: 'id', label: 'Indonesian' },
+  { id: 'hi', label: 'Hindi' },
+  { id: 'ja', label: 'Japanese' },
+  { id: 'ko', label: 'Korean' },
+  { id: 'zh', label: 'Chinese' },
+] as const;
+
+async function fetchWords(lang: string, punctuation: boolean, count = 120): Promise<string[]> {
+  try {
+    const url = `/api/words?lang=${lang}&punctuation=${punctuation}&count=${count}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+    return data.words ?? [];
+  } catch {
+    return [];
+  }
+}
 
 export default function Homepage() {
-  const [words, setWords] = useState(INITIAL_WORDS);
+  const [words, setWords] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [language, setLanguage] = useState('en');
+  const [punctuation, setPunctuation] = useState(false);
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const langMenuRef = useRef<HTMLDivElement>(null);
+
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [input, setInput] = useState('');
   const [correctKeystrokes, setCorrectKeystrokes] = useState(0);
   const [incorrectKeystrokes, setIncorrectKeystrokes] = useState(0);
   const [wordHadErrors, setWordHadErrors] = useState<boolean[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
-  const incorrectAtWordStartRef = useRef(0);
 
-  // Mode + duration state
-  const [activeMode, setActiveMode] = useState<(typeof TEST_MODES)[number]>('time');
-  const [duration, setDuration] = useState(30);
-
-  // Timer state
-  const [timeLeft, setTimeLeft] = useState<number>(30);
+  const [duration, setDuration] = useState<number>(30);
+  const [timeLeft, setTimeLeft] = useState(30);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isTimeUp = hasStarted && timeLeft <= 0;
-  const isDone = currentWordIndex >= words.length || isTimeUp;
-  const currentWord = !isDone ? words[currentWordIndex] : '';
+  const isDone = words.length > 0 && (currentWordIndex >= words.length || isTimeUp);
+  const currentWord = !isDone && words.length > 0 ? words[currentWordIndex] : '';
 
-  // Pagination
   const page = Math.floor(currentWordIndex / WORDS_PER_PAGE);
   const pageStart = page * WORDS_PER_PAGE;
   const visibleWords = words.slice(pageStart, Math.min(pageStart + WORDS_PER_PAGE, words.length));
   const completedOnPage = Math.min(currentWordIndex - pageStart, visibleWords.length);
   const upcomingOnPage = visibleWords.slice(completedOnPage + 1);
+
   const expectedChar = !isDone
-    ? input.length < currentWord.length
-      ? currentWord[input.length]
-      : ' '
+    ? input.length < currentWord.length ? currentWord[input.length] : ' '
     : '';
 
-  // WPM: words completed / (elapsed time in minutes)
   const elapsedSeconds = hasStarted ? duration - timeLeft : 0;
   const wpm = elapsedSeconds > 0 ? Math.round((currentWordIndex / elapsedSeconds) * 60) : 0;
+  const totalKeystrokes = correctKeystrokes + incorrectKeystrokes;
+  const accuracy = totalKeystrokes > 0 ? Math.round((correctKeystrokes / totalKeystrokes) * 100) : 0;
 
-  // Timer countdown
+  const currentLang = LANGUAGES.find((l) => l.id === language) ?? LANGUAGES[0];
+
+  // Close lang menu on outside click
   useEffect(() => {
-    if (isRunning && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((t) => {
-          if (t <= 1) {
-            setIsRunning(false);
-            return 0;
-          }
-          return t - 1;
-        });
-      }, 1000);
+    function close(e: MouseEvent) {
+      if (langMenuRef.current && !langMenuRef.current.contains(e.target as Node))
+        setLangMenuOpen(false);
     }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isRunning, timeLeft > 0]);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  // Fetch words on mount and when language/punctuation changes (only pre-start)
+  const loadWords = useCallback(async () => {
+    setLoading(true);
+    const fetched = await fetchWords(language, punctuation);
+    setWords(fetched);
+    setLoading(false);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, [language, punctuation]);
+
+  useEffect(() => {
+    if (!hasStarted) loadWords();
+  }, [loadWords, hasStarted]);
+
+  // Timer
+  const timerActive = isRunning && timeLeft > 0;
+  useEffect(() => {
+    if (!timerActive) return;
+    const id = setInterval(() => {
+      setTimeLeft((t) => {
+        if (t <= 1) { setIsRunning(false); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+    timerRef.current = id;
+    return () => clearInterval(id);
+  }, [timerActive]);
 
   function selectDuration(d: number) {
     if (hasStarted) return;
@@ -84,14 +115,7 @@ export default function Homepage() {
     setTimeLeft(d);
   }
 
-  function startTimer() {
-    if (!hasStarted) {
-      setHasStarted(true);
-      setIsRunning(true);
-    }
-  }
-
-  const resetTest = useCallback(() => {
+  const resetTest = useCallback(async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setCurrentWordIndex(0);
     setInput('');
@@ -101,281 +125,240 @@ export default function Homepage() {
     setTimeLeft(duration);
     setIsRunning(false);
     setHasStarted(false);
-    incorrectAtWordStartRef.current = 0;
+    setLoading(true);
+    const fetched = await fetchWords(language, punctuation);
+    setWords(fetched);
+    setLoading(false);
     setTimeout(() => inputRef.current?.focus(), 50);
-  }, [duration]);
+  }, [duration, language, punctuation]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (isDone) return;
+    if (isDone || loading) return;
 
-    // Start timer on first real keypress
     if (!hasStarted && e.key.length === 1) {
-      startTimer();
+      setHasStarted(true);
+      setIsRunning(true);
     }
 
-    // Space: advance to next word when length is reached
     if (e.key === ' ') {
       if (input.length >= currentWord.length) {
         e.preventDefault();
-        // Mark wrong only if final typed word doesn't match (backspace corrections count as correct)
         const hadErrors = input !== currentWord;
         setWordHadErrors((prev) => [...prev, hadErrors]);
-        incorrectAtWordStartRef.current = incorrectKeystrokes;
         setCurrentWordIndex((i) => i + 1);
-        // Carry extra characters to the next word (wrong key becomes start of next word)
         setInput(input.slice(currentWord.length));
       }
       return;
     }
 
-    // Backspace: undo the count for the character being removed so re-typing doesn't double-count
     if (e.key === 'Backspace' && input.length > 0) {
       const pos = input.length - 1;
-      const charRemoved = input[pos];
-      const wasCorrect = pos < currentWord.length && charRemoved === currentWord[pos];
-      if (wasCorrect) {
-        setCorrectKeystrokes((c) => Math.max(0, c - 1));
-      } else {
-        setIncorrectKeystrokes((c) => Math.max(0, c - 1));
-      }
+      const wasCorrect = pos < currentWord.length && input[pos] === currentWord[pos];
+      if (wasCorrect) setCorrectKeystrokes((c) => Math.max(0, c - 1));
+      else setIncorrectKeystrokes((c) => Math.max(0, c - 1));
       return;
     }
 
     if (e.key.length !== 1) return;
-    // Only count keystrokes that advance the cursor; ignore repeat/overflow chars so counters stay correct
     if (input.length >= currentWord.length) return;
-    if (e.key === expectedChar) {
-      setCorrectKeystrokes((c) => c + 1);
-    } else {
-      setIncorrectKeystrokes((c) => c + 1);
-    }
+    if (e.key === expectedChar) setCorrectKeystrokes((c) => c + 1);
+    else setIncorrectKeystrokes((c) => c + 1);
   }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
-
     if (value.endsWith(' ')) {
       const typedWord = value.trim();
-      // Advance when word length is reached (space pressed), regardless of correct/wrong chars
       if (typedWord.length >= currentWord.length) {
-        // Mark wrong only if final typed word doesn't match (backspace corrections count as correct)
         const typedForThisWord = typedWord.slice(0, currentWord.length);
-        const hadErrors = typedForThisWord !== currentWord;
-        setWordHadErrors((prev) => [...prev, hadErrors]);
-        incorrectAtWordStartRef.current = incorrectKeystrokes;
+        setWordHadErrors((prev) => [...prev, typedForThisWord !== currentWord]);
         setCurrentWordIndex((i) => i + 1);
-        // Carry extra characters to the next word
         setInput(typedWord.length > currentWord.length ? typedWord.slice(currentWord.length) : '');
         return;
       }
-      // Not enough characters yet: don't accept the space
       setInput(value.trim());
       return;
     }
-
-    // Allow overflow only when the word part is correct (extra chars become start of next word)
     const wordPartCorrect = value.length > currentWord.length && value.slice(0, currentWord.length) === currentWord;
     setInput(wordPartCorrect || value.length <= currentWord.length ? value : value.slice(0, currentWord.length));
   }
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
-    function handleGlobalKeyDown() {
-      if (document.activeElement !== inputRef.current && !isDone) {
+    function refocus() {
+      if (document.activeElement !== inputRef.current && !isDone)
         inputRef.current?.focus();
-      }
     }
-    document.addEventListener('keydown', handleGlobalKeyDown);
-    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+    document.addEventListener('keydown', refocus);
+    return () => document.removeEventListener('keydown', refocus);
   }, [isDone]);
 
-  function focusInput() {
-    inputRef.current?.focus();
-  }
-
-  const totalKeystrokes = correctKeystrokes + incorrectKeystrokes;
-  const accuracy = totalKeystrokes > 0 ? Math.round((correctKeystrokes / totalKeystrokes) * 100) : 0;
+  function focusInput() { inputRef.current?.focus(); }
 
   return (
-    <div
-      className="flex-1 min-h-0 flex flex-col text-foreground overflow-hidden"
-      onClick={focusInput}
-    >
-      <main className="relative flex-1 min-h-0 flex flex-col items-center justify-center w-full px-4 py-4 sm:px-5 sm:py-6 md:px-6 md:py-8 overflow-auto">
+    <div className="flex-1 min-h-0 flex flex-col text-foreground overflow-hidden" onClick={focusInput}>
+      <main className="relative flex-1 min-h-0 flex flex-col items-center justify-center w-full max-w-5xl mx-auto px-6 py-8 overflow-auto">
 
-        {/* Timer countdown — only while typing */}
-        {hasStarted && !isDone && (
-          <p className="font-mono text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4 shrink-0 tabular-nums text-primary">
-            {timeLeft}
-          </p>
-        )}
-
-        {/* Test mode + duration selector + prompt — only before the test starts */}
-        {!hasStarted && (
-          <>
-            <div className="flex flex-col items-center gap-3 mb-4 sm:mb-6 shrink-0" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/30">
-                {TEST_MODES.map((mode) => (
+        {/* Controls — pre-start */}
+        <div className="flex flex-col items-center gap-3 mb-8 shrink-0" onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); inputRef.current?.focus(); }}>
+          {!hasStarted ? (
+            <>
+              {/* Language + punctuation row */}
+              <div className="flex items-center gap-3">
+                <div className="relative" ref={langMenuRef}>
                   <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setActiveMode(mode)}
-                    className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md capitalize transition-colors ${
-                      mode === activeMode
-                        ? 'text-foreground bg-accent/50'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
+                    onClick={() => setLangMenuOpen((o) => !o)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-muted/40 px-3.5 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {currentLang.label}
+                    <ChevronDown className="size-3.5" />
+                  </button>
+                  {langMenuOpen && (
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 w-40 max-h-64 overflow-auto rounded-lg border border-border bg-popover p-1 shadow-lg">
+                      {LANGUAGES.map((lang) => (
+                        <button
+                          key={lang.id}
+                          className={`flex w-full items-center rounded-md px-3 py-1.5 text-sm transition-colors ${
+                            lang.id === language
+                              ? 'bg-accent text-accent-foreground font-medium'
+                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                          }`}
+                          onClick={() => { setLanguage(lang.id); setLangMenuOpen(false); }}
+                        >
+                          {lang.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setPunctuation((p) => !p)}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                    punctuation
+                      ? 'bg-foreground text-background'
+                      : 'bg-muted/40 text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Punctuation
+                </button>
+              </div>
+
+              {/* Duration pills */}
+              <div className="flex items-center gap-1.5 rounded-full bg-muted/40 p-1">
+                {DURATIONS.map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => selectDuration(d)}
+                    className={`px-4 py-1.5 text-sm font-medium rounded-full tabular-nums transition-colors ${
+                      d === duration
+                        ? 'bg-foreground text-background'
+                        : 'text-muted-foreground hover:text-foreground'
                     }`}
                   >
-                    {mode}
+                    {d}s
                   </button>
                 ))}
               </div>
-              {activeMode === 'time' && (
-                <div className="flex items-center gap-2">
-                  {DURATION_OPTIONS.map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => selectDuration(d)}
-                      className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors tabular-nums ${
-                        d === duration
-                          ? 'text-primary bg-primary/10'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
-                      }`}
-                    >
-                      {d}s
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <p className="text-muted-foreground text-sm sm:text-base md:text-lg mb-3 sm:mb-4 md:mb-6 text-center w-full max-w-4xl shrink-0">
-              Start typing to begin
-            </p>
-          </>
-        )}
-
-        {/* Typing area — always visible */}
-        <div className="w-full max-w-4xl font-mono text-base sm:text-lg md:text-xl lg:text-2xl leading-relaxed text-muted-foreground/90 select-none tracking-wide text-justify hyphens-auto">
-          {/* This page: completed words */}
-          {visibleWords.slice(0, completedOnPage).map((word, i) => (
-            <span key={pageStart + i}>
-              <span className={wordHadErrors[pageStart + i] ? 'text-red-600 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}>
-                    {word}
-                  </span>
-              {' '}
-            </span>
-          ))}
-          {/* Current word: per-character */}
-          {!isDone && (
-            <>
-              <span className="inline">
-                {currentWord.split('').map((char, j) => {
-                  if (j < input.length) {
-                    const correct = input[j] === char;
-                    return (
-                      <span key={j} className={correct ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
-                        {char}
-                      </span>
-                    );
-                  }
-                  if (j === input.length) {
-                    return (
-                      <span key={j} className="text-foreground border-b-2 border-primary bg-primary/20">
-                        {char}
-                      </span>
-                    );
-                  }
-                  return (
-                    <span key={j} className="text-muted-foreground/90">{char}</span>
-                  );
-                })}
-                {input.length === currentWord.length && (
-                  <span className="inline-block w-0.5 h-6 bg-primary align-middle ml-px" aria-hidden />
-                )}
-                {input.length > currentWord.length && input.slice(0, currentWord.length) === currentWord && (
-                  <>
-                    <span className="text-red-600 dark:text-red-400">{input.slice(currentWord.length)}</span>
-                    <span className="inline-block w-0.5 h-6 bg-primary align-middle ml-px" aria-hidden />
-                  </>
-                )}
-              </span>
-              {' '}
-              {upcomingOnPage.join(' ')}
             </>
-          )}
-          {/* When done, show the remaining upcoming words as muted */}
-          {isDone && upcomingOnPage.length > 0 && (
-            <span>{upcomingOnPage.join(' ')}</span>
+          ) : !isDone ? (
+            <span className="text-4xl font-bold tabular-nums text-primary">{timeLeft}</span>
+          ) : null}
+        </div>
+
+        {/* Word display */}
+        <div className="w-full font-mono text-lg sm:text-xl md:text-2xl leading-relaxed text-muted-foreground/60 select-none tracking-wide text-justify">
+          {loading ? (
+            <p className="text-center text-muted-foreground/40 animate-pulse">Loading words...</p>
+          ) : (
+            <>
+              {visibleWords.slice(0, completedOnPage).map((word, i) => (
+                <span key={pageStart + i}>
+                  <span className={wordHadErrors[pageStart + i] ? 'text-red-500/80 dark:text-red-400/80' : 'text-foreground/80'}>
+                    {word}
+                  </span>{' '}
+                </span>
+              ))}
+
+              {!isDone && (
+                <>
+                  <span className="inline">
+                    {currentWord.split('').map((char, j) => {
+                      if (j < input.length) {
+                        const correct = input[j] === char;
+                        return (
+                          <span key={j} className={correct ? 'text-foreground' : 'text-red-500 dark:text-red-400'}>
+                            {char}
+                          </span>
+                        );
+                      }
+                      if (j === input.length) {
+                        return (
+                          <span key={j} className="text-foreground border-b-2 border-primary">
+                            {char}
+                          </span>
+                        );
+                      }
+                      return <span key={j}>{char}</span>;
+                    })}
+                    {input.length === currentWord.length && (
+                      <span className="inline-block w-0.5 h-6 bg-primary align-middle ml-px animate-pulse" aria-hidden />
+                    )}
+                    {input.length > currentWord.length && input.slice(0, currentWord.length) === currentWord && (
+                      <>
+                        <span className="text-red-500 dark:text-red-400">{input.slice(currentWord.length)}</span>
+                        <span className="inline-block w-0.5 h-6 bg-primary align-middle ml-px animate-pulse" aria-hidden />
+                      </>
+                    )}
+                  </span>{' '}
+                  <span>{upcomingOnPage.join(' ')}</span>
+                </>
+              )}
+
+              {isDone && upcomingOnPage.length > 0 && (
+                <span>{upcomingOnPage.join(' ')}</span>
+              )}
+            </>
           )}
         </div>
 
-        {/* Restart + live stats while typing */}
-        {hasStarted && !isDone && (
-          <div className="flex items-center justify-center gap-4 mt-3 sm:mt-4 shrink-0" onClick={(e) => e.stopPropagation()}>
-            <p className="text-muted-foreground text-xs sm:text-sm tabular-nums">
-              {correctKeystrokes}<span className="text-emerald-600 dark:text-emerald-400">/</span>{incorrectKeystrokes}
-              {totalKeystrokes > 0 && <span className="ml-1.5 text-muted-foreground/70">({accuracy}%)</span>}
-            </p>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={resetTest}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Restart test"
-            >
-              <RotateCcw className="size-4" />
-            </Button>
-          </div>
-        )}
-
-        {/* Restart hint before typing */}
-        {!hasStarted && (
-          <p className="text-muted-foreground text-xs sm:text-sm mt-2 sm:mt-3 text-center shrink-0 tabular-nums">
-            Correct: {correctKeystrokes} · Incorrect: {incorrectKeystrokes}
-          </p>
-        )}
-
-        {/* Results modal */}
-        <Dialog open={isDone} onOpenChange={(open) => { if (!open) resetTest(); }}>
-          <DialogContent showCloseButton={false} className="sm:max-w-sm gap-0 p-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            {/* Hero stat */}
-            <div className="flex flex-col items-center gap-1 pt-8 pb-6 bg-primary/5">
-              <span className="text-5xl sm:text-6xl font-bold tabular-nums text-primary">{wpm}</span>
-              <span className="text-sm font-medium text-muted-foreground">words per minute</span>
-            </div>
-
-            {/* Stats row */}
-            <div className="grid grid-cols-3 divide-x divide-border border-t border-border">
-              <div className="flex flex-col items-center gap-0.5 py-4">
-                <span className="text-lg font-semibold tabular-nums text-foreground">{accuracy}%</span>
-                <span className="text-[11px] text-muted-foreground">accuracy</span>
+        {/* Stats bar */}
+        <div className="mt-8 shrink-0" onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); inputRef.current?.focus(); }}>
+          {isDone ? (
+            <div className="flex flex-col items-center gap-6">
+              <div className="flex items-baseline gap-2">
+                <span className="text-5xl font-bold tabular-nums text-primary">{wpm}</span>
+                <span className="text-sm text-muted-foreground">wpm</span>
               </div>
-              <div className="flex flex-col items-center gap-0.5 py-4">
-                <span className="text-lg font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{correctKeystrokes}</span>
-                <span className="text-[11px] text-muted-foreground">correct</span>
+              <div className="flex items-center gap-6 text-sm tabular-nums">
+                <span className="text-muted-foreground">{accuracy}% accuracy</span>
+                <span className="text-muted-foreground">{currentWordIndex} words</span>
+                <span className="text-muted-foreground">{elapsedSeconds}s</span>
               </div>
-              <div className="flex flex-col items-center gap-0.5 py-4">
-                <span className="text-lg font-semibold tabular-nums text-red-600 dark:text-red-400">{incorrectKeystrokes}</span>
-                <span className="text-[11px] text-muted-foreground">incorrect</span>
-              </div>
+              <button
+                onClick={resetTest}
+                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <RotateCcw className="size-4" /> Try again
+              </button>
             </div>
-
-            {/* Summary + action */}
-            <div className="flex flex-col gap-3 p-5 pt-4 border-t border-border">
-              <p className="text-center text-xs text-muted-foreground">
-                {currentWordIndex} words · {elapsedSeconds}s · {isTimeUp ? "time's up" : 'complete'}
-              </p>
-              <Button onClick={resetTest} size="lg" className="w-full gap-2">
-                <RotateCcw className="size-4" />
-                Try again
-              </Button>
+          ) : hasStarted ? (
+            <div className="flex items-center gap-4">
+              <span className="text-xs tabular-nums text-muted-foreground">
+                <span className="text-foreground font-medium">{correctKeystrokes}</span>
+                <span className="text-muted-foreground/50"> / </span>
+                <span className="text-red-500/80 dark:text-red-400/80 font-medium">{incorrectKeystrokes}</span>
+                {totalKeystrokes > 0 && <span className="ml-2 text-muted-foreground/60">{accuracy}%</span>}
+              </span>
+              <button onClick={resetTest} className="text-muted-foreground/50 hover:text-foreground transition-colors" aria-label="Restart">
+                <RotateCcw className="size-3.5" />
+              </button>
             </div>
-          </DialogContent>
-        </Dialog>
+          ) : !loading ? (
+            <p className="text-muted-foreground/40 text-sm">Start typing to begin</p>
+          ) : null}
+        </div>
 
         <input
           ref={inputRef}
@@ -383,8 +366,8 @@ export default function Homepage() {
           value={input}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          disabled={isDone}
-          className="absolute inset-0 w-full opacity-0 cursor-default font-mono text-base sm:text-lg outline-none"
+          disabled={isDone || loading}
+          className="absolute inset-0 w-full opacity-0 pointer-events-none cursor-default font-mono text-base outline-none"
           aria-label="Type the words above"
           autoComplete="off"
           autoCorrect="off"

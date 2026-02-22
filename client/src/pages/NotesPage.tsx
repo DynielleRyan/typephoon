@@ -56,11 +56,21 @@ function parseMarkdown(source: string): ParsedLine[] {
   });
 }
 
+function normalizeTypeable(text: string): string {
+  return text
+    .replace(/[\u2018\u2019\u201A]/g, "'")
+    .replace(/[\u201C\u201D\u201E]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/\u00A0/g, ' ');
+}
+
 function plainTextFromLines(lines: ParsedLine[]): string {
-  return lines.map((line) => {
-    const prefix = line.bullet ? '• ' : line.numbered ? `${line.numbered}. ` : '';
+  const raw = lines.map((line) => {
+    const prefix = line.bullet ? '- ' : line.numbered ? `${line.numbered}. ` : '';
     return prefix + line.segments.map((s) => s.text).join('');
   }).join('\n');
+  return normalizeTypeable(raw);
 }
 
 // --- Toolbar helper ---
@@ -227,7 +237,7 @@ export default function NotesPage() {
         6: 'text-xs font-semibold uppercase tracking-wide',
       };
       const headingClass = line.heading ? headingClasses[line.heading] ?? '' : '';
-      const linePrefix = line.bullet ? '• ' : line.numbered ? `${line.numbered}. ` : '';
+      const linePrefix = line.bullet ? '- ' : line.numbered ? `${line.numbered}. ` : '';
 
       const lineChars: React.ReactNode[] = [];
 
@@ -326,17 +336,17 @@ export default function NotesPage() {
                 H<ChevronDown className="size-2.5" />
               </Button>
               {headingOpen && !isActive && (
-                <div className="absolute top-full left-0 mt-1 z-50 min-w-28 rounded-md border border-border bg-popover p-1 shadow-md">
+                <div className="absolute top-full left-0 mt-1 z-50 min-w-40 rounded-md border border-border bg-popover p-1 shadow-md">
                   {([1, 2, 3, 4, 5, 6] as const).map((level) => (
                     <button
                       key={level}
-                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                      className="flex w-full items-center gap-2.5 rounded-sm px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground transition-colors whitespace-nowrap"
                       onClick={() => {
                         if (ta) prefixLine(ta, '#'.repeat(level) + ' ', setNoteText);
                         setHeadingOpen(false);
                       }}
                     >
-                      <span className="text-muted-foreground text-xs font-mono w-5">H{level}</span>
+                      <span className="text-muted-foreground text-xs font-mono w-5 shrink-0">H{level}</span>
                       <span className={
                         level === 1 ? 'text-base font-bold' :
                         level === 2 ? 'text-sm font-bold' :
@@ -439,6 +449,13 @@ export default function NotesPage() {
           )}
         </div>
       </div>
+
+      <blockquote className="px-6 py-3 text-center">
+        <p className="text-muted-foreground/40 text-xs italic leading-relaxed max-w-xl mx-auto">
+          "Developing a strong mind-muscle connection with the hands through repeatedly writing or typing concepts enhances retention and supports more effective learning."
+        </p>
+        <footer className="mt-1 text-muted-foreground/30 text-[10px]">— Ma'am P.</footer>
+      </blockquote>
     </div>
   );
 }

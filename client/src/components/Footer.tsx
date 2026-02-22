@@ -1,18 +1,36 @@
-import React from 'react'
+import { Github, Linkedin, Briefcase } from 'lucide-react';
 
-const Footer = () => {
+const SOCIALS = [
+  { href: 'https://github.com/DynielleRyan', icon: Github, label: 'GitHub' },
+  { href: 'https://www.linkedin.com/in/dynielle-ryan-1a4267250/', icon: Linkedin, label: 'LinkedIn' },
+  { href: 'https://github.com/DynielleRyan', icon: Briefcase, label: 'Portfolio' },
+] as const;
+
+export default function Footer() {
   return (
-    <>
-       <footer className="py-4 px-6 border-t border-border/40">
-        <p className="text-muted-foreground text-sm">
-          <kbd className="px-1.5 py-0.5 rounded bg-muted/80 text-muted-foreground font-mono text-xs border border-border">
-          @kicest
-          </kbd>{" "}
-          
-        </p>
-      </footer>
-    </>
-  )
-}
+    <footer className="py-3 px-6 border-t border-border/40 grid grid-cols-3 items-center">
+      <span className="text-muted-foreground/60 text-xs tracking-wide">
+        typephoon@kicest
+      </span>
 
-export default Footer
+      <span className="text-muted-foreground/60 text-xs tracking-wide text-center">
+        &copy; {new Date().getFullYear()} All rights reserved.
+      </span>
+
+      <div className="flex items-center gap-3 justify-end">
+        {SOCIALS.map(({ href, icon: Icon, label }) => (
+          <a
+            key={label}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={label}
+            className="text-muted-foreground/50 hover:text-foreground transition-colors"
+          >
+            <Icon className="size-4" />
+          </a>
+        ))}
+      </div>
+    </footer>
+  );
+}
