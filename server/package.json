@@ -1,0 +1,19 @@
+{
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "tsx watch server.ts"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.3.0",
+    "tsx": "^4.21.0"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">= 22.0.0"
+  }
+}
