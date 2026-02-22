@@ -194,6 +194,17 @@ export default function Homepage() {
     return () => document.removeEventListener('keydown', refocus);
   }, [isDone]);
 
+  useEffect(() => {
+    function handleResetShortcut(e: KeyboardEvent) {
+      if (e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+        e.preventDefault();
+        resetTest();
+      }
+    }
+    document.addEventListener('keydown', handleResetShortcut);
+    return () => document.removeEventListener('keydown', handleResetShortcut);
+  }, [resetTest]);
+
   function focusInput() { inputRef.current?.focus(); }
 
   return (
@@ -342,6 +353,12 @@ export default function Homepage() {
               >
                 <RotateCcw className="size-4" /> Try again
               </button>
+              <p className="text-muted-foreground/40 text-xs">
+                <kbd className="px-1.5 py-0.5 rounded bg-muted/80 font-mono text-[10px] border border-border">Shift</kbd>
+                {' + '}
+                <kbd className="px-1.5 py-0.5 rounded bg-muted/80 font-mono text-[10px] border border-border">R</kbd>
+                {' to restart'}
+              </p>
             </div>
           ) : hasStarted ? (
             <div className="flex items-center gap-4">
@@ -354,9 +371,20 @@ export default function Homepage() {
               <button onClick={resetTest} className="text-muted-foreground/50 hover:text-foreground transition-colors" aria-label="Restart">
                 <RotateCcw className="size-3.5" />
               </button>
+              <span className="text-muted-foreground/30 text-[10px] hidden sm:inline">
+                <kbd className="px-1 py-0.5 rounded bg-muted/50 font-mono border border-border/50">Shift</kbd>+<kbd className="px-1 py-0.5 rounded bg-muted/50 font-mono border border-border/50">R</kbd>
+              </span>
             </div>
           ) : !loading ? (
-            <p className="text-muted-foreground/40 text-sm">Start typing to begin</p>
+            <div className="flex flex-col items-center gap-1">
+              <p className="text-muted-foreground/40 text-sm">Start typing to begin</p>
+              <p className="text-muted-foreground/30 text-xs">
+                <kbd className="px-1 py-0.5 rounded bg-muted/60 font-mono text-[10px] border border-border/60">Shift</kbd>
+                {' + '}
+                <kbd className="px-1 py-0.5 rounded bg-muted/60 font-mono text-[10px] border border-border/60">R</kbd>
+                {' to restart'}
+              </p>
+            </div>
           ) : null}
         </div>
 

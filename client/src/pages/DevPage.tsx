@@ -241,7 +241,7 @@ export default function DevPage() {
       <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4 p-4 sm:p-5 md:p-6">
 
         {/* Left panel */}
-        <div className="relative flex flex-col w-full md:w-1/2 min-h-[200px] rounded-lg border border-border bg-card overflow-hidden">
+        <div className="relative flex flex-col w-full md:w-1/2 min-h-0 flex-1 rounded-lg border border-border bg-card overflow-hidden">
           {/* Toolbar */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border bg-muted/30 shrink-0">
             {/* Language picker */}
@@ -311,10 +311,10 @@ export default function DevPage() {
           ref={typingRef}
           tabIndex={0}
           onKeyDown={handleKeyDown}
-          className="relative flex flex-col w-full md:w-1/2 min-h-[200px] rounded-lg border border-border bg-muted/20 p-4 overflow-auto focus:outline-none focus:ring-2 focus:ring-ring/50"
+          className="relative flex flex-col w-full md:w-1/2 min-h-[200px] flex-1 rounded-lg border border-border bg-muted/20 p-4 overflow-auto focus:outline-none focus:ring-2 focus:ring-ring/50"
         >
           {!isActive ? (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 min-h-0 flex items-center justify-center text-center px-2">
               <p className="text-muted-foreground/50 text-sm">Your code will appear here with syntax highlighting</p>
             </div>
           ) : (

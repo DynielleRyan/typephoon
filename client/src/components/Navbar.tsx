@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/providers/ThemeProvider';
-import { User, Sun, Moon } from 'lucide-react';
+import { User, Sun, Moon, Menu } from 'lucide-react';
 import WhirlwindLogo from '@/components/WhirlwindLogo';
 
 const NAV_LINKS = [
@@ -11,34 +11,53 @@ const NAV_LINKS = [
   { to: '/dev', label: 'Code' },
 ] as const;
 
+const navLinkClass = (pathname: string, to: string) =>
+  `block w-full px-4 py-3 text-left text-sm font-medium rounded-md transition-colors ${
+    pathname === to
+      ? 'text-foreground bg-accent/50'
+      : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
+  }`;
+
 export default function Navbar() {
   const { pathname } = useLocation();
   const { isDark, toggle } = useTheme();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const mobileNavRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function close(e: MouseEvent) {
+    function closeUser(e: MouseEvent) {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node))
         setUserMenuOpen(false);
     }
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    document.addEventListener('mousedown', closeUser);
+    return () => document.removeEventListener('mousedown', closeUser);
+  }, []);
+
+  useEffect(() => {
+    function closeMobile(e: MouseEvent) {
+      if (mobileNavRef.current && !mobileNavRef.current.contains(e.target as Node))
+        setMobileNavOpen(false);
+    }
+    document.addEventListener('mousedown', closeMobile);
+    return () => document.removeEventListener('mousedown', closeMobile);
   }, []);
 
   return (
     <header className="border-b border-border/40">
-      <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4">
-        <div className="flex items-center gap-6">
-          <Link to="/" className="text-foreground hover:text-foreground/90">
+      <div className="flex items-center justify-between gap-2 px-4 sm:px-6 py-3 sm:py-4 min-h-0">
+        <div className="flex items-center gap-3 sm:gap-6 min-w-0 flex-1">
+          <Link to="/" className="shrink-0 text-foreground hover:text-foreground/90" onClick={() => setMobileNavOpen(false)}>
             <WhirlwindLogo showText className="h-6 sm:h-7 w-auto" />
           </Link>
-          <nav className="flex items-center gap-1">
+          {/* Desktop nav */}
+          <nav className="hidden md:flex items-center gap-1 shrink-0">
             {NAV_LINKS.map(({ to, label }) => (
               <Link
                 key={to}
                 to={to}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                className={`px-2 sm:px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
                   pathname === to
                     ? 'text-foreground bg-accent/50'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'
@@ -49,11 +68,38 @@ export default function Navbar() {
             ))}
           </nav>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+          {/* Mobile hamburger */}
+          <div className="relative md:hidden" ref={mobileNavRef}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="min-w-[44px] min-h-[44px] w-11 h-11 text-foreground/80 hover:text-foreground hover:bg-accent/50"
+              aria-label="Open menu"
+              aria-expanded={mobileNavOpen}
+              onClick={() => setMobileNavOpen((o) => !o)}
+            >
+              <Menu className="size-5" />
+            </Button>
+            {mobileNavOpen && (
+              <div className="absolute right-0 top-full mt-2 z-50 min-w-[180px] rounded-lg border border-border bg-popover py-2 shadow-lg">
+                {NAV_LINKS.map(({ to, label }) => (
+                  <Link
+                    key={to}
+                    to={to}
+                    className={navLinkClass(pathname, to)}
+                    onClick={() => setMobileNavOpen(false)}
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
           <Button
             variant="ghost"
             size="icon"
-            className="text-muted-foreground hover:text-foreground"
+            className="min-w-[44px] min-h-[44px] w-11 h-11 text-foreground/80 hover:text-foreground hover:bg-accent/50 sm:size-9 sm:min-w-0 sm:min-h-0"
             aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={toggle}
           >
@@ -63,11 +109,11 @@ export default function Navbar() {
             <Button
               variant="ghost"
               size="icon"
-              className="text-muted-foreground hover:text-foreground"
+              className="min-w-[44px] min-h-[44px] w-11 h-11 text-foreground/80 hover:text-foreground hover:bg-accent/50 sm:size-9 sm:min-w-0 sm:min-h-0"
               aria-label="Account"
               onClick={() => setUserMenuOpen((o) => !o)}
             >
-              <User className="size-5" />
+              <User className="size-5 sm:size-5" />
             </Button>
             {userMenuOpen && (
               <div className="absolute right-0 top-full mt-2 z-50 w-44 rounded-lg border border-border bg-popover p-3 shadow-lg">
