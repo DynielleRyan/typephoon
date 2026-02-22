@@ -1,44 +1,60 @@
+import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { Settings, User } from "lucide-react";
+import { User, Sun, Moon } from "lucide-react";
 
-const TEST_MODES = ["time", "words", "quote", "zen", "custom"] as const;
+interface NavbarProps {
+  isDark: boolean;
+  onToggleTheme: () => void;
+}
 
-const Navbar = () => {
+const NAV_LINKS = [
+  { to: "/", label: "Type" },
+  { to: "/notes", label: "Notes" },
+  { to: "/dev", label: "Dev" },
+] as const;
+
+const Navbar = ({ isDark, onToggleTheme }: NavbarProps) => {
+    const { pathname } = useLocation();
+
     return(
-        <>
-        <header className="flex items-center justify-between px-6 py-4 border-b border-border/40">
-<div className="flex items-center gap-8">
-  <a href="/" className="text-xl font-semibold tracking-tight text-foreground hover:text-foreground/90">
-    Typephoon
-  </a>
-  <nav className="flex items-center gap-1" aria-label="Test mode">
-    {TEST_MODES.map((mode) => (
-      <button
-        key={mode}
-        type="button"
-        className={cn(
-          "px-3 py-2 text-sm font-medium rounded-md capitalize transition-colors",
-          mode === "time"
-            ? "text-foreground bg-accent/50"
-            : "text-muted-foreground hover:text-foreground hover:bg-accent/30"
-        )}
-      >
-        {mode}
-      </button>
-    ))}
-  </nav>
-</div>
-<div className="flex items-center gap-1">
-  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" aria-label="Account">
-    <User className="size-5" />
-  </Button>
-  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" aria-label="Settings">
-    <Settings className="size-5" />
-  </Button>
-</div>
-</header>
-</>
+      <header className="border-b border-border/40">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center gap-6">
+            <Link to="/" className="text-lg sm:text-xl font-semibold tracking-tight text-foreground hover:text-foreground/90">
+              Typephoon
+            </Link>
+            <nav className="flex items-center gap-1">
+              {NAV_LINKS.map(({ to, label }) => (
+                <Link
+                  key={to}
+                  to={to}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    pathname === to
+                      ? "text-foreground bg-accent/50"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/30"
+                  }`}
+                >
+                  {label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground"
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              onClick={onToggleTheme}
+            >
+              {isDark ? <Sun className="size-5" /> : <Moon className="size-5" />}
+            </Button>
+            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" aria-label="Account">
+              <User className="size-5" />
+            </Button>
+          </div>
+        </div>
+      </header>
     )
 }
 
