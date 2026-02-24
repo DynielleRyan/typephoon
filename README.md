@@ -2,7 +2,7 @@
 
 **Repetition comes with retension, but instead of writing with a pen, why not type it?**
 
-Typephoon is a typing practice app that solves the problem . Practice with random words, retype your notes, or drill code snippets. Built with React and Node. 
+Typephoon is a typing practice app that solves the problem of people who are inclined to understand and retain information if they write it down, in the age where even notes are digial, why not make this the new norm?. Practice with random words, retype your notes, or drill code snippets. Built with React and Node. 
 
 
 
