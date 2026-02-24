@@ -1,9 +1,9 @@
 import { Github, Linkedin, Briefcase } from 'lucide-react';
 
 const SOCIALS = [
-  { href: 'https://github.com/DynielleRyan', icon: Github, label: 'GitHub' },
+  { href: 'https://github.com/DynielleRyan/typephoon', icon: Github, label: 'GitHub' },
   { href: 'https://www.linkedin.com/in/dynielle-ryan-1a4267250/', icon: Linkedin, label: 'LinkedIn' },
-  { href: 'https://github.com/DynielleRyan', icon: Briefcase, label: 'Portfolio' },
+  { href: 'https://ryandev-78npq.sevalla.app/', icon: Briefcase, label: 'Portfolio' },
 ] as const;
 
 export default function Footer() {
