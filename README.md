@@ -1,6 +1,6 @@
 # Typephoon
 
-**Repetition comes with retendion, but instead of writing with a pen, why not type it?**
+**Repetition comes with retension, but instead of writing with a pen, why not type it?**
 
 Typephoon is a typing practice app that solves the problem . Practice with random words, retype your notes, or drill code snippets. Built with React and Node. 
 
