@@ -1,0 +1,33 @@
+{
+  "functions": {
+    "server/dist/server.js": {
+      "runtime": "nodejs@20.x"
+    }
+  },
+  "builds": [
+    {
+      "src": "client/**",
+      "use": "@vercel/static",
+      "config": {
+        "distDir": "dist"
+      }
+    },
+    {
+      "src": "server/dist/server.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "server/dist/server.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "client/dist/$1"
+    }
+  ],
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "outputDirectory": "client/dist"
+}
