@@ -13,6 +13,7 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const isProd = process.env.NODE_ENV === 'production';
+const isVercel = process.env.VERCEL === '1';
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173')
   .split(',')
@@ -54,14 +55,21 @@ app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-if (isProd) {
+// Only serve static files in development or if not on Vercel
+if (!isVercel && isProd) {
   const clientDist = join(__dirname, '..', '..', 'client', 'dist');
   app.use(express.static(clientDist));
-  app.get('/{*splat}', (_req, res) => {
+  app.get('*', (_req, res) => {
     res.sendFile(join(clientDist, 'index.html'));
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT} [${isProd ? 'production' : 'development'}]`);
-});
+// For local development
+if (!isVercel) {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT} [${isProd ? 'production' : 'development'}]`);
+  });
+}
+
+// For Vercel serverless - MUST be at top level
+export default app;
