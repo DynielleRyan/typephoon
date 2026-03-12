@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "server/dist/server.js": {
-      "runtime": "nodejs@20.x"
-    }
-  },
   "builds": [
     {
       "src": "client/**",
